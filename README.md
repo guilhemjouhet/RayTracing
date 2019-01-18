@@ -1,3 +1,3 @@
 # RayTracing
 
-A realistic rendering script using stb library available here : https://github.com/nothings/stb/
+A realistic rendering script on Visual Studio using stb library available here : https://github.com/nothings/stb/
