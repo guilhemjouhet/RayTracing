@@ -1,5 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS 1
-
+#include <random>
 #include <Vector>
 #include <algorithm>
 #include <stdlib.h>
@@ -7,8 +7,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 //#define double PI = 3.1415
 #include "stb_image_write.h"
-
-//R=ray.u-2*dot(ray.u-n)*N
+std::default_random_engine engine;
+std::uniform_real_distribution <double> distrib(0, 1);
 
 class Vector{
 public :
@@ -36,7 +36,9 @@ Vector operator-(const Vector& a, const Vector& b){
 Vector operator+(const Vector& a, const double b){
 	return Vector(a.x+b,a.y+b,a.z+b);
 }
-
+Vector operator*(const Vector& a, const Vector& b) {
+	return Vector(a.x * b.x, a.y * b.y, a.z * b.z);
+}
 Vector operator*(const double b,const Vector& a){
 	return Vector(b*a.x,b*a.y,b*a.z);
 }
@@ -47,6 +49,10 @@ Vector operator/(const Vector& a, const double b){
 
 double dot(const Vector& a, const Vector& b){
 	return a.x*b.x+a.y*b.y+a.z*b.z;
+}
+
+Vector cross(const Vector& a, const Vector& b) {
+	return Vector(a.x*b.y - a.y*b.x, a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z);
 }
 
 class Ray {
@@ -128,7 +134,10 @@ public:
 		}
 	}
 
-	Vector getcolor(const Ray& ray, const Vector& L) {
+	Vector getcolor(const Ray& ray, const Vector& L, int nrebond, int nChemin=1) {
+		if (nrebond == 0 || nChemin==0) { 
+			return Vector(0, 0, 0); 
+		}
 		double I = 10000000;
 		Vector P, N;//création des vecteurs d'intesection : point d'intersection et normale à la sphère
 		int ii = -1;
@@ -140,13 +149,13 @@ public:
 				Vector R = ray.U - 2 * dot(ray.U, N)*N; //rayon réfléchit en P vers l'infini
 				R.normalize();
 				Ray rayon_lumiere(P + 0.0001*N, R); //idem
-				Vector color = getcolor(rayon_lumiere, L);
+				Vector color = getcolor(rayon_lumiere, L, nrebond-1,nChemin);
 				return color;
 			}
 			else if (SS.transparent) {
-				float nairnverre = 1 / 0.8;
+				float nairnverre = 0.5;
 				if (dot(ray.U, N) > 0) {
-					N = Vector(0,0,0)-N;
+					N = operator-(Vector(0,0,0),N);
 					nairnverre = 1 / nairnverre;
 				}
 				float det = 1 - nairnverre * nairnverre*(1 - dot(ray.U, N)*dot(ray.U, N));
@@ -154,7 +163,7 @@ public:
 					Vector R = ray.U - 2 * dot(ray.U, N)*N; //rayon réfléchit en P vers l'infini
 					R.normalize();
 					Ray rayon_lumiere(P + 0.0001*N, R); //idem
-					Vector color = getcolor(rayon_lumiere, L);
+					Vector color = getcolor(rayon_lumiere, L, nrebond-1,nChemin);
 					return color;
 
 				}
@@ -162,11 +171,11 @@ public:
 					Vector R = nairnverre * ray.U - (nairnverre*dot(ray.U, N) + sqrt(det))*N;
 					R.normalize();
 					Ray rayon_lumiere(P - 0.0001*N, R); //idem
-					Vector color = getcolor(rayon_lumiere, L);
+					Vector color = getcolor(rayon_lumiere, L, nrebond-1,nChemin);
 					return color;
 				}
 			}
-			else {
+			else {//contribution directe
 				Vector PL = L - P;
 				double distance = PL.norm2();
 				PL.normalize();
@@ -177,14 +186,43 @@ public:
 				bool ombre = intersect(rayon_lumiere, Pprime, Nprime, objetprime, tprime);
 				Vector PPprime = P - Pprime;
 				double distanceprime = PPprime.norm2();
+				Vector color(0, 0, 0);
 				if (ombre && distanceprime < distance && !spheres[objetprime].transparent) {
-					Vector color(0, 0, 0);
-					return color;
+					//Vector color(0, 0, 0);
+					//return color;
 				}
 				else {
-					Vector color = (I / 3.14*std::max(0., dot(N, PL)) / (4 * 3.14*distance))*SS.color; // Luminosité fonction de la distance et de l'angle
-					return color;
+					color = (I / 3.14*std::max(0., dot(N, PL)) / (4 * 3.14*distance))*SS.color; // Luminosité fonction de la distance et de l'angle
+					//return color;
+
 				}
+				//éclairage indirect
+
+				if (nChemin > 1) {
+					for (int j = 0; j < nChemin; j++) {
+						double r1 = distrib(engine);
+						double r2 = distrib(engine);
+						Vector R_aleatoire_local(cos(2 * 3.14*r1)*sqrt(1 - r2), sin(2 * 3.14*r1)*sqrt(1 - r2), sqrt(r2));
+						Vector aleatoire(distrib(engine)-0.5, distrib(engine)-0.5, distrib(engine)-0.5);
+						Vector tangent1 = cross(N, aleatoire);
+						tangent1.normalize();
+						Vector tangent2 = cross(N, tangent1);
+
+						Vector R_aleatoire = R_aleatoire_local.z*N + R_aleatoire_local.x*tangent1 + R_aleatoire_local.y*tangent2;
+						R_aleatoire.normalize();
+						Ray rayon_aleatoire(P + 0.0001*N, R_aleatoire); //idem
+						color = color + 1/ (double)nChemin/255.*getcolor(rayon_aleatoire, L, nrebond-1,1)*SS.color;// on met nrebond=1 pour pas passer en exponentiel
+					}
+				}
+				else {
+					Vector R = ray.U - 2 * dot(ray.U, N)*N; //rayon réfléchit en P vers l'infini
+					R.normalize();
+					Ray rayon_lumiere(P + 0.0001*N, R); //idem
+					//Vector add1 = getcolor(rayon_lumiere, L, nrebond - 1, 1);
+					//Vector add = 1. / 255. *add1*SS.color;// on met nChemin=1 pour pas passer en exponentiel
+					color = color + 1. / 255. *getcolor(rayon_lumiere, L, nrebond - 1, 1)*SS.color;
+				}
+				return color;
 			}
 		}
 		else {
@@ -197,11 +235,11 @@ public:
 int main() {
 	Vector C(0, 0, 55);
 	Vector L(-10,20, 40);
-	double I = 1000000; // Intensité de la source
+	//double I = 10000; // Intensité de la source
 	int W = 720;
-	int H = 720;
+	int H = 480;
 	int R = 990;
-	double fov = 80 * 3.1415 / 180;
+	double fov = 90 * 3.1415 / 180;
 	double tanhalfov = -W / 2 / tan(fov / 2);
 	std::vector<unsigned char> image(W*H * 3, 0);
 	Vector O(0, 15, 0); // centre de la sphère
@@ -222,19 +260,32 @@ int main() {
 	scene.addSphere(Sder);
 	Vector colorg(255, 255, 0);
 	Vector Og(0, 1000, 0); // centre de la sphère de gauche
-	Sphere Sg(Og, 960, colorg, false);
+	Sphere Sg(Og, 970, colorg, false);
 	scene.addSphere(Sg);
 	Vector colorf(255, 255, 255);
 	Vector Of(0, 0, -1000); // centre de la sphère du fond
 	Sphere Sf(Of, R, colorf, false);
 	scene.addSphere(Sf);
 	Sphere SS(O, 10, color, false);
+	int nChemin =  10;
+	int nrebond = 4;
+	int nrays =  4;
+	#pragma omp parallel for
 	for (int i = 0; i < H; i++) { //pt pixel
 		for (int j = 0; j < W; j++) {
-			Vector U(i - H / 2, -j + W / 2, tanhalfov); //calcul du vecteur directeur du rayon
-			U.normalize();
-			Ray ray(C, U);
-			Vector color = scene.getcolor(ray, L);
+			Vector color(0., 0., 0.);
+			for (int k = 0; k < nrays; k++) {
+				double r1 = distrib(engine);
+				double r2 = distrib(engine);
+				double R = 0.5*sqrt(-2 * log(r1));
+				double dx = R*cos(2 * 3.14*r2);
+				double dy = R*sin(2 * 3.14*r2);
+				Vector U(i + 0.5 - H / 2 + dx, -j - 0.5 + dy + W / 2, tanhalfov); //calcul du vecteur directeur du rayon
+				U.normalize();
+				Ray ray(C, U);
+				Vector coloradd = scene.getcolor(ray, L, nrebond, nChemin);
+				color = color + 1 / (double)nrays*coloradd;
+			}
 			image[(i*W + j) * 3 + 0] = std::min(255., std::pow(color.x, 0.45));
 			image[(i*W + j) * 3 + 1] = std::min(255., std::pow(color.y, 0.45));
 			image[(i*W + j) * 3 + 2] = std::min(255., std::pow(color.z, 0.45));
