@@ -3,6 +3,7 @@
 #include <Vector>
 #include <algorithm>
 #include <stdlib.h>
+#include <iostream>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 //#define double PI = 3.1415
@@ -64,11 +65,12 @@ public:
 
 class Sphere{
 public:
-	Sphere(const Vector& O, double R, const Vector& color,const bool miroir, const bool transparent=false) : O(O), R(R), color(color),miroir(miroir),transparent(transparent) {};
+	Sphere(const Vector& O, double R, const Vector& color, const bool miroir, const bool lumiere, const bool transparent = false) : O(O), R(R), color(color), miroir(miroir),lumiere(lumiere), transparent(transparent) {};
 	Vector O;
 	double R;
 	Vector color;
 	bool miroir;
+	bool lumiere;
 	bool transparent;
 
 	bool intersect(const Ray& r, Vector &P, Vector &N, double &t) {
@@ -175,27 +177,40 @@ public:
 					return color;
 				}
 			}
+			else if (SS.lumiere) {
+				Vector color = I/4./3.14/3.14/SS.R/SS.R*SS.color;
+				return color;
+			}
+			
 			else {//contribution directe
+				Vector color(0, 0, 0);
+
 				Vector PL = L - P;
 				double distance = PL.norm2();
 				PL.normalize();
 				Ray rayon_lumiere(P + 0.00001*N, PL);
+				
 				Vector Pprime, Nprime;
 				int objetprime;
 				double tprime;
 				bool ombre = intersect(rayon_lumiere, Pprime, Nprime, objetprime, tprime);
 				Vector PPprime = P - Pprime;
 				double distanceprime = PPprime.norm2();
-				Vector color(0, 0, 0);
-				if (ombre && distanceprime < distance && !spheres[objetprime].transparent) {
-					//Vector color(0, 0, 0);
-					//return color;
+				if (ombre && distanceprime < distance && !spheres[objetprime].transparent && !spheres[objetprime].lumiere) {
+					//on laisse color à 0
 				}
-				else {
-					color = (I / 3.14*std::max(0., dot(N, PL)) / (4 * 3.14*distance))*SS.color; // Luminosité fonction de la distance et de l'angle
-					//return color;
+				else if (spheres[objetprime].lumiere){
+					// direct cas ponctuel
+					color = (I / 3.14*std::max(0., dot(N, PL)) / (4 * 3.14*distance))*SS.color;
 
+					//direct cas étendu
+					/*
+					Vector OX = P - L;
+					Vector OXprime = Pprime - L;
+					color = I / 4. / 3.14 / 255.*abs(dot(ray.U, N)*dot(PPprime, Nprime)/ dot(OX, OXprime)) / distanceprime *spheres[0].color;
+					int a = 1;*/
 				}
+
 				//éclairage indirect
 
 				if (nChemin > 1) {
@@ -218,9 +233,7 @@ public:
 					Vector R = ray.U - 2 * dot(ray.U, N)*N; //rayon réfléchit en P vers l'infini
 					R.normalize();
 					Ray rayon_lumiere(P + 0.0001*N, R); //idem
-					//Vector add1 = getcolor(rayon_lumiere, L, nrebond - 1, 1);
-					//Vector add = 1. / 255. *add1*SS.color;// on met nChemin=1 pour pas passer en exponentiel
-					color = color + 1. / 255. *getcolor(rayon_lumiere, L, nrebond - 1, 1)*SS.color;
+					color = color +  1./255.*getcolor(rayon_lumiere, L, nrebond - 1, 1)*SS.color;
 				}
 				return color;
 			}
@@ -233,57 +246,82 @@ public:
 };
 
 int main() {
+	Scene scene;
 	Vector C(0, 0, 55);
 	Vector L(-10,20, 40);
+	Vector colorL(255, 255, 255);
+	Sphere Lum(L, 10, colorL, false, true);//lumiere
+	scene.addSphere(Lum);
 	//double I = 10000; // Intensité de la source
 	int W = 720;
 	int H = 480;
 	int R = 990;
-	double fov = 90 * 3.1415 / 180;
+	double fov = 65 * 3.1415 / 180;
 	double tanhalfov = -W / 2 / tan(fov / 2);
 	std::vector<unsigned char> image(W*H * 3, 0);
-	Vector O(0, 15, 0); // centre de la sphère
-	Vector color(255, 0, 0);
-	Sphere S(O, 10, color, true); //Sphère centrée en O de rayon R=10
-	Scene scene;
+	Vector O(0, -15, 0); // centre de la sphère
+	Vector color(255, 0,0);
+	//Sphere S(O, 10, color, false, false);
+	Sphere S(O, 10, color, true,false); //miroir
 	scene.addSphere(S);
-	Vector OO(0, -15, 0); // centre de la sphère transparente
-	Sphere St(OO, 10, color, false,true); //Sphère transparente
+	Vector OO(0, 15,-20); // centre de la sphère transparente
+	//Sphere St(OO, 10, color, false, false);
+	Sphere St(OO, 10, color, false,false,true); //Sphère transparente
 	scene.addSphere(St);
-	Vector colorb(0, 255, 0);
+	Vector colorb(255, 10, 255);
 	Vector Ob(1000, 0, 0); // centre de la sphère du bas
-	Sphere Sb(Ob, R, colorb, false);
+	Sphere Sb(Ob, R, colorb, false,false);
 	scene.addSphere(Sb);
-	Vector colorder(0, 255, 255);
+	Vector colorh(0, 100,100);
+	Vector Oh(-1200, 0, 0); // centre de la sphère du haut
+	Sphere Sh(Oh, R, colorh, false, false);
+	scene.addSphere(Sh);
+	Vector colorder(255, 25,255);
 	Vector Oder(0, 0, 1000); // centre de la sphère de derrière
-	Sphere Sder(Oder, 940, colorder, false);
+	Sphere Sder(Oder, 940, colorder, false,false);
 	scene.addSphere(Sder);
-	Vector colorg(255, 255, 0);
+	Vector colorg(20, 150,30);
 	Vector Og(0, 1000, 0); // centre de la sphère de gauche
-	Sphere Sg(Og, 970, colorg, false);
+	Sphere Sg(Og, 970, colorg, false,false);
 	scene.addSphere(Sg);
-	Vector colorf(255, 255, 255);
-	Vector Of(0, 0, -1000); // centre de la sphère du fond
-	Sphere Sf(Of, R, colorf, false);
+	Vector colord(100, 10, 10);
+	Vector Od(0, -1000, 0); // centre de la sphère de gauche
+	Sphere Sd(Od, 970, colord, false, false);
+	scene.addSphere(Sd);
+	Vector colorf(0, 0,255);
+	Vector Of(0, 0, -1200); // centre de la sphère du fond
+	Sphere Sf(Of, 980, colorf, false,false);
 	scene.addSphere(Sf);
-	Sphere SS(O, 10, color, false);
-	int nChemin =  10;
-	int nrebond = 4;
-	int nrays =  4;
-	#pragma omp parallel for
+	//Sphere SS(O, 10, color, false,false);
+	int nChemin =  50;
+	int nrebond =  10;
+	int nrays =  50;
+	double distnette = 55;
+	#pragma omp parallel for schedule(dynamic,12)
 	for (int i = 0; i < H; i++) { //pt pixel
+		if (i%50==0) std::cout << i/(double)H*100 <<"%\n";
 		for (int j = 0; j < W; j++) {
 			Vector color(0., 0., 0.);
 			for (int k = 0; k < nrays; k++) {
 				double r1 = distrib(engine);
 				double r2 = distrib(engine);
-				double R = 0.5*sqrt(-2 * log(r1));
+				double R = 0.25*sqrt(-2 * log(r1));
 				double dx = R*cos(2 * 3.14*r2);
 				double dy = R*sin(2 * 3.14*r2);
+				double rc1 = distrib(engine);
+				double rc2 = distrib(engine);
+				double Rc = sqrt(-2 * log(rc1));
+				double dcx = Rc * cos(2 * 3.14*rc2);
+				double dcy = Rc * sin(2 * 3.14*rc2);
 				Vector U(i + 0.5 - H / 2 + dx, -j - 0.5 + dy + W / 2, tanhalfov); //calcul du vecteur directeur du rayon
 				U.normalize();
-				Ray ray(C, U);
-				Vector coloradd = scene.getcolor(ray, L, nrebond, nChemin);
+				Vector UU = distnette * U;
+				Vector DC (dcx, dcy, 0);
+				Vector origin = C + DC;
+				Vector direction = UU-DC;
+				direction.normalize();
+				Ray ray(origin, direction);
+				Vector coloradd = scene.getcolor( ray, L, nrebond, nChemin);
 				color = color + 1 / (double)nrays*coloradd;
 			}
 			image[(i*W + j) * 3 + 0] = std::min(255., std::pow(color.x, 0.45));
