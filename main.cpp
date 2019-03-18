@@ -109,7 +109,9 @@ public:
 		this->lumiere = lumiere;
 		this->transparent = transparent;
 	};
+	//centre
 	Vector O;
+	//Rayon
 	double R;
 
 //detection of intersection between ray and spheres
@@ -151,9 +153,11 @@ class Triangle{
 	//a triangle have 3 vertexes
 public:
 	Triangle(const Vector& A, const Vector& B, const Vector& C) : A(A),B(B),C(C){};
+	//Les trois sommets sont représentés par 3 vecteurs
 	Vector A;
 	Vector B;
 	Vector C;
+
 	//intersection between ray and triangle
 	virtual bool intersect(const Ray& r, Vector &P, Vector &N, double &t, double &alpha, double &beta, double &gamma) {
 		//intersection avec le plan du triangle
@@ -457,7 +461,9 @@ public:
 	}
 
 	//éléments du maillage
+	//numéros des sommets d'un triangle
 	std::vector<TriangleIndices> indices;
+	//coordonées des sommets
 	std::vector<Vector> vertices;
 	std::vector<Vector> normals;
 	std::vector<Vector> uvs;
